@@ -13,7 +13,7 @@ def _filter_for_periods(qs, period_name, nr_of_periods, now):
     return qs.filter(digested_at__gte=sub_periods_from_datetime(now, nr_of_periods, period_name))
 
 
-def check_for_thresholds(qs, now, thresholds, add_for_current=0):
+def check_for_thresholds(qs, now, thresholds, add_for_current=0, order_field="project_digest_order"):
     # thresholds :: [(period_name, nr_of_periods, gte_threshold), ...]
     # returns [(state, below_threshold_from, check_again_after, (period_name, nr_of_periods, gte_threshold)), ...]
 
@@ -28,7 +28,7 @@ def check_for_thresholds(qs, now, thresholds, add_for_current=0):
     # anyway) this means the cost will be amortized away. (e.g. quota of 1_000; a check every 100 events in a bad case).
     # The only relevant cost that this mechanism thus adds is the per-project counting of digested events.
 
-    # This function looks at event.project_digest_order to determine how many events have been seen in a given period.
+    # This function looks at the per-project order field to determine how many items have been seen in a given period.
     # This is, in the light of evictions (and deletions), an approximation only. We'll leave the proof of why and how
     # much better than counting events this is as an exercise to the reader. If we ever want to go even more precise,
     # we'll have to move to a bucketing counting scheme rather than rolling counters.
@@ -42,25 +42,25 @@ def check_for_thresholds(qs, now, thresholds, add_for_current=0):
         qs_for_period = _filter_for_periods(qs, period_name, nr_of_periods, now)
 
         # We have indexes on digested_at prefixed with either (nothing, project, issue) which makes this efficient.
-        # project_digest_order is the tie-breaker and makes tests make sense; it is assumed to not be necessarily part
-        # of the index (most of the sorting happens before that point) but as per #322 it does appear to be necessary
-        # for at least some dbs (mariadb and perhaps others).
+        # The per-project order field is the tie-breaker and makes tests make sense; it is assumed to not necessarily
+        # be part of the index (most of the sorting happens before that point) but as per #322 it does appear to be
+        # necessary for at least some dbs (mariadb and perhaps others).
         first_in_period = (
-            qs_for_period.exclude(project_digest_order__isnull=True)
-            .order_by('digested_at', 'project_digest_order').first())
+            qs_for_period.exclude(**{f"{order_field}__isnull": True})
+            .order_by("digested_at", order_field).first())
 
         if first_in_period is None:
             total_events_in_period = add_for_current
-        elif first_in_period.project_digest_order is None:
+        elif getattr(first_in_period, order_field) is None:
             # Fall back to the pre-project_digest_order behavior.
             total_events_in_period = qs_for_period.count() + add_for_current
         else:
             # will exist (implied by 'first'), and will have a project_digest_order (because only _older_ might not)
-            last_in_period = (qs_for_period.exclude(project_digest_order__isnull=True)
-                              .order_by('-digested_at', '-project_digest_order').first())
+            last_in_period = (qs_for_period.exclude(**{f"{order_field}__isnull": True})
+                              .order_by("-digested_at", f"-{order_field}").first())
 
-            total_events_in_period = (last_in_period.project_digest_order - first_in_period.project_digest_order
-                                      + 1 + add_for_current)  # +1: not the difference, but the count incl. both ends
+            total_events_in_period = (
+                getattr(last_in_period, order_field) - getattr(first_in_period, order_field) + 1 + add_for_current)
 
         exceeded = total_events_in_period >= gte_threshold
 

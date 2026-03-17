@@ -23,6 +23,7 @@ from events.factories import create_event_data, create_event
 from events.retention import evict_for_max_events
 from events.storage_registry import override_event_storages
 from events.models import Event
+from logs.models import LogEntry
 from issues.factories import get_or_create_issue
 from issues.models import IssueStateManager, Issue, TurningPoint, TurningPointKind
 from issues.utils import get_values
@@ -506,6 +507,121 @@ class IngestViewTestCase(TransactionTestCase):
                 200, response.status_code, response.content if response.status_code != 302 else response.url)
 
             self.assertEqual(0, Event.objects.count())
+
+    def test_envelope_endpoint_logs_without_event_id(self):
+        project = Project.objects.create(name="test")
+        sentry_auth_header = get_header_value(f"http://{ project.sentry_key }@hostisignored/{ project.id }")
+
+        log_payload = {
+            "items": [{
+                "timestamp": time.time(),
+                "level": "error",
+                "body": "hello from logs",
+                "trace_id": "12345678-1234-1234-1234-1234567890ab",
+                "span_id": "1234567890abcdef",
+                "attributes": {
+                    "logger.name": "my.logger",
+                    "sentry.message.template": "hello %s",
+                    "sentry.origin": "auto.log.stdlib",
+                    "sentry.release": "backend@1.2.3",
+                    "sentry.environment": "production",
+                    "sentry.sdk.name": "sentry.python",
+                    "sentry.sdk.version": "2.54.0",
+                    "sentry.timestamp.sequence": 17,
+                },
+            }],
+        }
+
+        data_bytes = b'{"sent_at":"2026-03-17T12:00:00Z"}\n{"type":"log"}\n' + json.dumps(log_payload).encode("utf-8")
+
+        response = self.client.post(
+            f"/api/{ project.id }/envelope/",
+            content_type="application/json",
+            headers={"X-Sentry-Auth": sentry_auth_header},
+            data=data_bytes,
+        )
+        self.assertEqual(200, response.status_code)
+
+        self.assertEqual(1, LogEntry.objects.count())
+        self.assertEqual(0, Event.objects.count())
+        self.assertEqual(0, Issue.objects.count())
+
+        log_entry = LogEntry.objects.get()
+        self.assertEqual("hello from logs", log_entry.body)
+        self.assertEqual("error", log_entry.level)
+        self.assertEqual("my.logger", log_entry.logger_name)
+        self.assertEqual("hello %s", log_entry.message_template)
+        self.assertEqual("auto.log.stdlib", log_entry.origin)
+        self.assertEqual("backend@1.2.3", log_entry.release)
+        self.assertEqual("production", log_entry.environment)
+        self.assertEqual("sentry.python", log_entry.sdk_name)
+        self.assertEqual("2.54.0", log_entry.sdk_version)
+        self.assertEqual(17, log_entry.sequence)
+        self.assertEqual("my.logger", log_entry.raw_attributes["logger.name"])
+        self.assertEqual("auto.log.stdlib", log_entry.raw_attributes["sentry.origin"])
+        self.assertEqual(17, log_entry.raw_attributes["sentry.timestamp.sequence"])
+
+    def test_envelope_endpoint_event_and_logs(self):
+        project = Project.objects.create(name="test")
+        sentry_auth_header = get_header_value(f"http://{ project.sentry_key }@hostisignored/{ project.id }")
+
+        event_data = create_event_data(exception_type="MixedEvent")
+        event_bytes = json.dumps(event_data).encode("utf-8")
+        log_payload = {
+            "items": [{
+                "timestamp": time.time(),
+                "level": "warning",
+                "body": "mixed log body",
+                "attributes": {
+                    "logger.name": "mixed.logger",
+                },
+            }],
+        }
+
+        data_bytes = (
+            b'{"event_id": "%s"}\n' % event_data["event_id"].encode("utf-8") +
+            b'{"type":"event"}\n' + event_bytes + b"\n" +
+            b'{"type":"log"}\n' + json.dumps(log_payload).encode("utf-8")
+        )
+
+        response = self.client.post(
+            f"/api/{ project.id }/envelope/",
+            content_type="application/json",
+            headers={"X-Sentry-Auth": sentry_auth_header},
+            data=data_bytes,
+        )
+        self.assertEqual(200, response.status_code)
+
+        self.assertEqual(1, Event.objects.count())
+        self.assertEqual(1, Issue.objects.count())
+        self.assertEqual(1, LogEntry.objects.count())
+        self.assertEqual("mixed log body", LogEntry.objects.get().body)
+
+    def test_envelope_endpoint_otel_log_is_ignored(self):
+        project = Project.objects.create(name="test")
+        sentry_auth_header = get_header_value(f"http://{ project.sentry_key }@hostisignored/{ project.id }")
+
+        log_payload = {
+            "items": [{
+                "timestamp": time.time(),
+                "level": "info",
+                "body": "hello from otel logs",
+                "attributes": {"logger.name": "otel.logger"},
+            }],
+        }
+
+        data_bytes = b'{"sent_at":"2026-03-17T12:00:00Z"}\n{"type":"otel_log"}\n' + json.dumps(
+            log_payload).encode("utf-8")
+
+        response = self.client.post(
+            f"/api/{ project.id }/envelope/",
+            content_type="application/json",
+            headers={"X-Sentry-Auth": sentry_auth_header},
+            data=data_bytes,
+        )
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(0, LogEntry.objects.count())
+        self.assertEqual(0, Event.objects.count())
 
     @tag("samples")
     def test_envelope_endpoint_reused_ids_different_exceptions(self):

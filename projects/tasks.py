@@ -61,6 +61,7 @@ def get_model_topography_with_project_override():
     """
     from issues.models import Issue, TurningPoint, Grouping
     from events.models import Event
+    from logs.models import LogEntry
     from tags.models import IssueTag, EventTag, TagValue, TagKey
     from alerts.models import MessagingServiceConfig
     from releases.models import Release
@@ -75,6 +76,7 @@ def get_model_topography_with_project_override():
 
         TurningPoint,  # above Event, to avoid deletions via .triggering_event
         Event,         # above Grouping, to avoid deletions via .grouping
+        LogEntry,
         Grouping,
 
         # these things "could be anywhere" in the ordering; they're not that connected; we put them at the end.

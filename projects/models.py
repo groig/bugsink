@@ -106,6 +106,8 @@ class Project(models.Model):
     issue_count = models.PositiveIntegerField(null=False, blank=False, default=0, editable=False)
     digested_event_count = models.PositiveIntegerField(null=False, blank=False, default=0, editable=False)
     stored_event_count = models.IntegerField(blank=False, null=False, default=0, editable=False)
+    digested_log_count = models.PositiveIntegerField(null=False, blank=False, default=0, editable=False)
+    stored_log_count = models.IntegerField(blank=False, null=False, default=0, editable=False)
 
     # alerting conditions
     alert_on_new_issue = models.BooleanField(default=True)
@@ -121,15 +123,19 @@ class Project(models.Model):
     quota_exceeded_until = models.DateTimeField(null=True, blank=True)
     quota_exceeded_reason = models.CharField(max_length=255, null=False, default="null")
     next_quota_check = models.PositiveIntegerField(null=False, default=0)
+    log_quota_exceeded_until = models.DateTimeField(null=True, blank=True)
+    log_quota_exceeded_reason = models.CharField(max_length=255, null=False, default="null")
+    next_log_quota_check = models.PositiveIntegerField(null=False, default=0)
 
     # retention
     retention_max_event_count = models.PositiveIntegerField(_("Retention max event count"), default=10_000)
+    retention_max_log_count = models.PositiveIntegerField(_("Retention max log count"), default=10_000)
 
     def __str__(self):
         return self.name
 
     def get_absolute_url(self):
-        return f"/issues/{ self.id }/"
+        return f"/issues/{self.id}/"
 
     @property
     def dsn(self):
@@ -148,6 +154,11 @@ class Project(models.Model):
         if get_settings().MAX_RETENTION_PER_PROJECT_EVENT_COUNT is not None:
             return min(self.retention_max_event_count, get_settings().MAX_RETENTION_PER_PROJECT_EVENT_COUNT)
         return self.retention_max_event_count
+
+    def get_retention_max_log_count(self):
+        if get_settings().MAX_RETENTION_PER_PROJECT_LOG_COUNT is not None:
+            return min(self.retention_max_log_count, get_settings().MAX_RETENTION_PER_PROJECT_LOG_COUNT)
+        return self.retention_max_log_count
 
     def save(self, *args, **kwargs):
         if self.slug in [None, ""]:
@@ -184,6 +195,7 @@ class Project(models.Model):
         return self.visibility <= ProjectVisibility.DISCOVERABLE
 
     def get_warnings(self):
+        warnings = []
         now = datetime.now(timezone.utc)
         from ingest.views import BaseIngestAPIView
         if BaseIngestAPIView.is_quota_still_exceeded(self, now):
@@ -191,10 +203,18 @@ class Project(models.Model):
             # TODO i18n
             per_fmt = "%s %ss" % (nr_of_periods, period_name) if nr_of_periods != 1 else period_name
             date_fmt = date(localtime(self.quota_exceeded_until), "j M G:i T")
-            return ["Event ingestion stopped until %s. Reason: project quota (%s events per %s) exceeded." % (
-                      date_fmt, gte_threshold, per_fmt)]
+            warnings.append("Event ingestion stopped until %s. Reason: project quota (%s events per %s) exceeded." % (
+                date_fmt, gte_threshold, per_fmt))
 
-        return []
+        from logs.ingest import is_log_quota_still_exceeded
+        if is_log_quota_still_exceeded(self, now):
+            period_name, nr_of_periods, gte_threshold = json.loads(self.log_quota_exceeded_reason)
+            per_fmt = "%s %ss" % (nr_of_periods, period_name) if nr_of_periods != 1 else period_name
+            date_fmt = date(localtime(self.log_quota_exceeded_until), "j M G:i T")
+            warnings.append("Log ingestion stopped until %s. Reason: project quota (%s logs per %s) exceeded." % (
+                date_fmt, gte_threshold, per_fmt))
+
+        return warnings
 
     class Meta:
         indexes = [

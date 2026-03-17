@@ -18,5 +18,7 @@ def get_filename_for_event_id(event_id, filetype="event"):
     basename = event_id_normalized
     if filetype == "minidump":
         basename += ".dmp"
+    elif filetype != "event":
+        basename += f".{filetype}"
 
     return safe_join(get_settings().INGEST_STORE_BASE_DIR, basename)

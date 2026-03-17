@@ -21,6 +21,9 @@ class Installation(models.Model):
     quota_exceeded_until = models.DateTimeField(null=True, blank=True)
     quota_exceeded_reason = models.CharField(max_length=255, null=False, default="null")
     next_quota_check = models.PositiveIntegerField(null=False, default=0)
+    log_quota_exceeded_until = models.DateTimeField(null=True, blank=True)
+    log_quota_exceeded_reason = models.CharField(max_length=255, null=False, default="null")
+    next_log_quota_check = models.PositiveIntegerField(null=False, default=0)
 
     @classmethod
     @immediate_atomic(only_if_needed=True)  # minimalize write-lock-hogging (while being callable within atomic blocks)

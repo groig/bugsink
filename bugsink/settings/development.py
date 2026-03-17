@@ -111,9 +111,19 @@ BUGSINK = {
     "MAX_EVENTS_PER_HOUR": 50_000_000,
     "MAX_EVENTS_PER_MONTH": 1_000_000_000,
 
+    "MAX_LOGS_PER_PROJECT_PER_5_MINUTES": 1_000_000,
+    "MAX_LOGS_PER_PROJECT_PER_HOUR": 50_000_000,
+    "MAX_LOGS_PER_PROJECT_PER_MONTH": 1_000_000_000,
+
+    "MAX_LOGS_PER_5_MINUTES": 1_000_000,
+    "MAX_LOGS_PER_HOUR": 50_000_000,
+    "MAX_LOGS_PER_MONTH": 1_000_000_000,
+
     # for development: things to tune if you want to test the the quota system
     "MAX_RETENTION_PER_PROJECT_EVENT_COUNT": None,
     "MAX_RETENTION_EVENT_COUNT": None,
+    "MAX_RETENTION_PER_PROJECT_LOG_COUNT": None,
+    "MAX_RETENTION_LOG_COUNT": None,
     "MAX_EMAILS_PER_MONTH": 10,
 
     "KEEP_ARTIFACT_BUNDLES": True,  # in development: useful to preserve sourcemap uploads

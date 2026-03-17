@@ -41,6 +41,7 @@ from alerts.tasks import send_new_issue_alert, send_regression_alert
 from compat.timestamp import format_timestamp, parse_timestamp
 from tags.models import digest_tags
 from bsmain.utils import b108_makedirs
+from logs.tasks import digest_log_entries
 from phonehome.models import Installation
 
 from sentry_sdk_extensions import capture_or_log_exception
@@ -238,6 +239,17 @@ class BaseIngestAPIView(View):
 
         return {
             "event_id": event_id,
+            "project_id": project.id,
+            "ingested_at": format_timestamp(ingested_at),
+            "ingestion_id": ingestion_id,
+            "remote_addr": remote_addr,
+        }
+
+    @classmethod
+    def get_log_meta(cls, ingested_at, ingestion_id, request, project):
+        remote_addr = request.META.get("REMOTE_ADDR")
+
+        return {
             "project_id": project.id,
             "ingested_at": format_timestamp(ingested_at),
             "ingestion_id": ingestion_id,
@@ -731,8 +743,6 @@ class IngestEnvelopeAPIView(BaseIngestAPIView):
         #   added complexity (conditional transactions both here and in digest_event) is not worth it for modes that are
         #   non-production anyway.
         installation = Installation.objects.get()
-        if self.is_quota_still_exceeded(installation, ingested_at):
-            return HttpResponse(status=HTTP_429_TOO_MANY_REQUESTS)
 
         if "dsn" in envelope_headers:
             # as in get_sentry_key_for_request, we don't verify that the DSN contains the project_pk, for the same
@@ -741,28 +751,21 @@ class IngestEnvelopeAPIView(BaseIngestAPIView):
         else:
             project = self.get_project_for_request(project_pk, request)
 
-        if self.is_quota_still_exceeded(project, ingested_at):
-            # Sentry has x-sentry-rate-limits, but for now 429 is just fine. Client-side this is implemented as a 60s
-            # backoff.
-            #
-            # Note "what's the use of this?": in my actual setups I have observed that we're almost entirely limited by
-            # (nginx's) SSL processing on-ingest, and that digest is (almost) able to keep up. Because of request
-            # buffering, the cost of such processing will already have been incurred once you reach this point. So is
-            # the entire idea of quota useless? No, because the SDK will generally back off on 429, this does create
-            # some relief. Also: avoid backlogging the digestion pipeline.
-            #
-            # Another aspect is: the quota serve as a first threshold for retention/evictions, i.e. some quota will mean
-            # that retention is not too heavily favoring "most recent" when there are very many requests coming in.
-            #
-            # Note that events that exceed the quota will not be seen (not even counted) in any way; if we ever want to
-            # do that we could make a specific task for it and delay that here (at a limited performance cost, but
-            # keeping with the "don't block the main DB on-ingest" design)
-            return HttpResponse(status=HTTP_429_TOO_MANY_REQUESTS)
+        log_filetypes = []
+        log_file_counter = 0
+
+        def cleanup_files(*filetypes):
+            for filetype in filetypes:
+                try:
+                    os.unlink(get_filename_for_event_id(ingestion_id, filetype=filetype))
+                except FileNotFoundError:
+                    pass
 
         def factory(item_headers):
+            nonlocal log_file_counter
             type_ = item_headers.get("type")
 
-            if ((type_ not in ["event", "attachment"]) or
+            if ((type_ not in ["event", "attachment", "log"]) or
                     (item_headers.get("type") == "attachment" and
                      item_headers.get("attachment_type") != "event.minidump") or
                     (item_headers.get("type") == "attachment" and
@@ -773,29 +776,38 @@ class IngestEnvelopeAPIView(BaseIngestAPIView):
                 # the envelope limit to protect us, and we incur almost no cost (NullWriter))
                 return MaxDataWriter("MAX_ATTACHMENT_SIZE", NullWriter())
 
-            # envelope_headers["event_id"] is required when type in ["event", "attachment"] per the spec (and takes
-            # precedence over the payload's event_id), so we can rely on it having been set.
-            if "event_id" not in envelope_headers:
-                raise ParseError("event_id not found in envelope headers")
+            if type_ in ["event", "attachment"]:
+                # envelope_headers["event_id"] is required when type in ["event", "attachment"] per the spec (and
+                # takes precedence over the payload's event_id), so we can rely on it having been set.
+                if "event_id" not in envelope_headers:
+                    raise ParseError("event_id not found in envelope headers")
 
-            try:
-                # validate that the event_id is a valid UUID as per the spec (validate at the edge)
-                uuid.UUID(envelope_headers["event_id"])
-            except ValueError:
-                raise ParseError("event_id in envelope headers is not a valid UUID")
+                try:
+                    # validate that the event_id is a valid UUID as per the spec (validate at the edge)
+                    uuid.UUID(envelope_headers["event_id"])
+                except ValueError:
+                    raise ParseError("event_id in envelope headers is not a valid UUID")
 
-            filetype = "event" if type_ == "event" else "minidump"
+            if type_ == "event":
+                filetype = "event"
+            elif type_ == "attachment":
+                filetype = "minidump"
+            else:
+                filetype = f"log.{log_file_counter}.json"
+                log_file_counter += 1
+                log_filetypes.append(filetype)
+
             filename = get_filename_for_event_id(ingestion_id, filetype=filetype)
             b108_makedirs(os.path.dirname(filename))
 
-            size_conf = "MAX_EVENT_SIZE" if type_ == "event" else "MAX_ATTACHMENT_SIZE"
+            size_conf = "MAX_ATTACHMENT_SIZE" if type_ == "attachment" else "MAX_EVENT_SIZE"
             return MaxDataWriter(size_conf, open(filename, 'wb'))
 
         # We ingest the whole envelope first and organize by type; this enables "digest once" across envelope-parts
         items_by_type = defaultdict(list)
         for item_headers, output_stream in parser.get_items(factory):
             type_ = item_headers.get("type")
-            if type_ not in ["event", "attachment"]:
+            if type_ not in ["event", "attachment", "log"]:
                 logger.info("skipping non-supported envelope item: %s", item_headers.get("type"))
                 continue
 
@@ -808,29 +820,47 @@ class IngestEnvelopeAPIView(BaseIngestAPIView):
 
         event_count = len(items_by_type.get("event", []))
         minidump_count = len(items_by_type.get("attachment", [])) if get_settings().FEATURE_MINIDUMPS else 0
+        log_count = len(items_by_type.get("log", []))
 
-        if event_count + minidump_count == 0:
-            logger.info("no event or minidump found in envelope, ignoring this envelope.")
+        if event_count + minidump_count + log_count == 0:
+            logger.info("no event, minidump, or log found in envelope, ignoring this envelope.")
             return HttpResponse()
 
-        if event_count > 1 or minidump_count > 1:
-            # TODO: we do 2 passes (one for storing, one for calling the right task), and we check certain conditions
-            # only on the second pass; this means that we may not clean up after ourselves yet.
-            # TODO we don't do any minidump files cleanup yet in any of the cases.
-
+        event_items_present = event_count + minidump_count > 0
+        should_process_events = event_items_present and event_count <= 1 and minidump_count <= 1
+        event_quota_blocked = False
+        if not should_process_events and (event_count > 1 or minidump_count > 1):
             logger.info(
-                "can only deal with one event/minidump per envelope but found %s/%s, ignoring this envelope.",
+                "can only deal with one event/minidump per envelope but found %s/%s, skipping event processing.",
                 event_count, minidump_count)
-            return HttpResponse()
+            cleanup_files("event", "minidump")
 
-        event_metadata = self.get_event_meta(envelope_headers["event_id"], ingested_at, ingestion_id, request, project)
+        should_process_logs = log_count > 0
+        log_quota_blocked = False
 
-        if event_count == 1:
+        if should_process_events:
+            if (self.is_quota_still_exceeded(installation, ingested_at) or
+                    self.is_quota_still_exceeded(project, ingested_at)):
+                should_process_events = False
+                event_quota_blocked = True
+                cleanup_files("event", "minidump")
+
+        if should_process_logs:
+            from logs.ingest import is_log_quota_still_exceeded
+            if (is_log_quota_still_exceeded(installation, ingested_at) or
+                    is_log_quota_still_exceeded(project, ingested_at)):
+                should_process_logs = False
+                log_quota_blocked = True
+                cleanup_files(*log_filetypes)
+
+        if should_process_events and event_count == 1:
+            event_metadata = self.get_event_meta(
+                envelope_headers["event_id"], ingested_at, ingestion_id, request, project)
             if minidump_count == 1:
                 event_metadata["has_minidump"] = True
             digest.delay(envelope_headers["event_id"], event_metadata)
 
-        else:
+        elif should_process_events and minidump_count == 1:
             # as it stands, we implement the minidump->event path for the minidump-only case on-ingest; we could push
             # this to a task too if needed or for reasons of symmetry.
             with open(get_filename_for_event_id(ingestion_id, filetype="minidump"), 'rb') as f:
@@ -839,6 +869,14 @@ class IngestEnvelopeAPIView(BaseIngestAPIView):
             # TODO: error handling
             # NOTE "The file should start with the MDMP magic bytes." is not checked yet.
             self.process_minidump(ingested_at, ingestion_id, minidump_bytes, project, request)
+
+        if should_process_logs:
+            log_metadata = self.get_log_meta(ingested_at, ingestion_id, request, project)
+            log_metadata["filetypes"] = log_filetypes
+            digest_log_entries.delay(log_metadata)
+
+        if not should_process_events and not should_process_logs and (event_quota_blocked or log_quota_blocked):
+            return HttpResponse(status=HTTP_429_TOO_MANY_REQUESTS)
 
         return HttpResponse()
 

@@ -116,6 +116,7 @@ BUGSINK_APPS = [
     'issues',
     'files',
     'events',
+    'logs',
     'tags',
     'alerts',
 

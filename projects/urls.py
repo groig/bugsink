@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import include, path
 
 from .views import (
     project_list, project_members, project_members_accept, project_member_settings, project_members_invite,
@@ -22,6 +22,8 @@ urlpatterns = [
 
     path('<int:project_pk>/sdk-setup/', project_sdk_setup, name="project_sdk_setup"),
     path('<int:project_pk>/sdk-setup/<str:platform>/', project_sdk_setup, name="project_sdk_setup_platform"),
+
+    path('<int:project_pk>/logs/', include('logs.urls')),
 
     path('<int:project_pk>/alerts/', project_alerts_setup, name="project_alerts_setup"),
     path('<int:project_pk>/alerts/service/add/', project_messaging_service_add, name="project_messaging_service_add"),

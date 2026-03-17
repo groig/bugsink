@@ -86,6 +86,7 @@ class ProjectForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         self.fields["retention_max_event_count"].help_text = _("The maximum number of events to store before evicting.")
+        self.fields["retention_max_log_count"].help_text = _("The maximum number of logs to store before evicting.")
 
         maxes = []
         if get_settings().MAX_RETENTION_PER_PROJECT_EVENT_COUNT is not None:
@@ -95,6 +96,14 @@ class ProjectForm(forms.ModelForm):
             maxes.append(get_settings().MAX_RETENTION_EVENT_COUNT // 5)
         if maxes:
             self.fields["retention_max_event_count"].initial = min(maxes)
+
+        maxes = []
+        if get_settings().MAX_RETENTION_PER_PROJECT_LOG_COUNT is not None:
+            maxes.append(get_settings().MAX_RETENTION_PER_PROJECT_LOG_COUNT)
+        if get_settings().MAX_RETENTION_LOG_COUNT is not None:
+            maxes.append(get_settings().MAX_RETENTION_LOG_COUNT // 5)
+        if maxes:
+            self.fields["retention_max_log_count"].initial = min(maxes)
 
         if self.instance is not None and self.instance.pk is not None:
             # for editing, we disallow changing the team. consideration: it's somewhat hard to see what the consequences
@@ -134,7 +143,7 @@ class ProjectForm(forms.ModelForm):
     class Meta:
         model = Project
 
-        fields = ["team", "name", "visibility", "retention_max_event_count"]
+        fields = ["team", "name", "visibility", "retention_max_event_count", "retention_max_log_count"]
         # "slug",  <= for now, we just do this in the model; if we want to do it in the form, I would want to have some
         # JS in place like we have in the admin. django/contrib/admin/static/admin/js/prepopulate.js is an example of
         # how Django does this (but it requires JQuery)
@@ -169,3 +178,29 @@ class ProjectForm(forms.ModelForm):
                                                 get_settings().MAX_RETENTION_EVENT_COUNT))
 
         return retention_max_event_count
+
+    def clean_retention_max_log_count(self):
+        retention_max_log_count = self.cleaned_data["retention_max_log_count"]
+
+        if self.instance and self.instance.pk:
+            grace = self.instance.retention_max_log_count
+        else:
+            grace = 0
+
+        if get_settings().MAX_RETENTION_PER_PROJECT_LOG_COUNT is not None:
+            if retention_max_log_count > max(get_settings().MAX_RETENTION_PER_PROJECT_LOG_COUNT, grace):
+                raise forms.ValidationError("The maximum allowed retention per project is %d logs." % (
+                    get_settings().MAX_RETENTION_PER_PROJECT_LOG_COUNT))
+
+        if get_settings().MAX_RETENTION_LOG_COUNT is not None:
+            sum_of_others = Project.objects.exclude(pk=self.instance.pk).aggregate(
+                total=Sum("retention_max_log_count"))["total"] or 0
+            budget_left = max(get_settings().MAX_RETENTION_LOG_COUNT - sum_of_others, 0, grace)
+
+            if retention_max_log_count > budget_left:
+                raise forms.ValidationError("The maximum allowed retention for this project is %d logs (based on the "
+                                            "installation-wide max of %d logs)." % (
+                                                budget_left,
+                                                get_settings().MAX_RETENTION_LOG_COUNT))
+
+        return retention_max_log_count

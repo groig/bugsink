@@ -29,11 +29,14 @@ class ProjectListSerializer(UTCModelSerializer):
             "dsn",
             "digested_event_count",
             "stored_event_count",
+            "digested_log_count",
+            "stored_log_count",
             "alert_on_new_issue",
             "alert_on_regression",
             "alert_on_unmute",
             "visibility",
             "retention_max_event_count",
+            "retention_max_log_count",
         ]
 
 
@@ -52,11 +55,14 @@ class ProjectDetailSerializer(ExpandableSerializerMixin, UTCModelSerializer):
             "dsn",
             "digested_event_count",
             "stored_event_count",
+            "digested_log_count",
+            "stored_log_count",
             "alert_on_new_issue",
             "alert_on_regression",
             "alert_on_unmute",
             "visibility",
             "retention_max_event_count",
+            "retention_max_log_count",
         ]
 
 
@@ -77,6 +83,7 @@ class ProjectCreateUpdateSerializer(UTCModelSerializer):
             "alert_on_regression",
             "alert_on_unmute",
             "retention_max_event_count",
+            "retention_max_log_count",
             # "slug", auto-generated for uniqueness
             # "is_deleted", must go through delete_deferred()
             # "digested_event_count",  system-managed counter
@@ -94,6 +101,7 @@ class ProjectCreateUpdateSerializer(UTCModelSerializer):
             "alert_on_regression": {"required": False},
             "alert_on_unmute": {"required": False},
             "retention_max_event_count": {"required": False},
+            "retention_max_log_count": {"required": False},
         }
 
     def validate_retention_max_event_count(self, value):
@@ -123,6 +131,33 @@ class ProjectCreateUpdateSerializer(UTCModelSerializer):
                     "The maximum allowed retention for this project is "
                     f"{budget_left} events (based on the installation-wide "
                     f"max of {get_settings().MAX_RETENTION_EVENT_COUNT} events)."
+                )
+
+        return value
+
+    def validate_retention_max_log_count(self, value):
+        if get_settings().MAX_RETENTION_PER_PROJECT_LOG_COUNT is not None:
+            if value > get_settings().MAX_RETENTION_PER_PROJECT_LOG_COUNT:
+                raise serializers.ValidationError(
+                    f"The maximum allowed retention per project is "
+                    f"{get_settings().MAX_RETENTION_PER_PROJECT_LOG_COUNT} logs."
+                )
+
+        if get_settings().MAX_RETENTION_LOG_COUNT is not None:
+            instance = getattr(self, "instance", None)
+
+            qs = Project.objects.all()
+            if instance and instance.pk:
+                qs = qs.exclude(pk=instance.pk)
+
+            sum_of_others = qs.aggregate(total=Sum("retention_max_log_count"))["total"] or 0
+            budget_left = max(get_settings().MAX_RETENTION_LOG_COUNT - sum_of_others, 0)
+
+            if value > budget_left:
+                raise serializers.ValidationError(
+                    "The maximum allowed retention for this project is "
+                    f"{budget_left} logs (based on the installation-wide "
+                    f"max of {get_settings().MAX_RETENTION_LOG_COUNT} logs)."
                 )
 
         return value

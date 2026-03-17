@@ -62,7 +62,7 @@ def get_snappea_warnings():
     snappea_warning = f"Snappea has {task_count} tasks in the queue, the oldest being {oldest_task_age}s old. "
     if done:
         # "per 10 minutes" display is intentional to not suggest too much precision.
-        snappea_warning += f"It's processed approximately { done } tasks in the last 10 minutes. "
+        snappea_warning += f"It's processed approximately {done} tasks in the last 10 minutes. "
     elif oldest_task_age > 70:
         # extra check for "well over a minute" because only then are Stats expected.
         snappea_warning += "No tasks processed recently. Snappea may not be running, misconfigured or blocked."
@@ -143,6 +143,15 @@ def useful_settings_processor(request):
             system_warnings.append(SystemWarning(
                 "Event ingestion stopped until %s. Reason: installation quota (%s events per %s) exceeded." % (
                       date_fmt, gte_threshold, per_fmt), None))
+
+        from logs.ingest import is_log_quota_still_exceeded
+        if is_log_quota_still_exceeded(installation, now):
+            period_name, nr_of_periods, gte_threshold = json.loads(installation.log_quota_exceeded_reason)
+            per_fmt = "%s %ss" % (nr_of_periods, period_name) if nr_of_periods != 1 else period_name
+            date_fmt = date(localtime(installation.log_quota_exceeded_until), "j M G:i T")
+            system_warnings.append(SystemWarning(
+                "Log ingestion stopped until %s. Reason: installation quota (%s logs per %s) exceeded." % (
+                    date_fmt, gte_threshold, per_fmt), None))
 
         return system_warnings + get_snappea_warnings()
 

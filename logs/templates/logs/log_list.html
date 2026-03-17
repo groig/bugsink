@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% load add_to_qs %}
+{% load humanize %}
+{% load i18n %}
+
+{% block title %}{% translate "Logs" %} · {{ project.name }} · {{ site_title }}{% endblock %}
+
+{% block content %}
+
+{% for warning in project.get_warnings %}
+<div class="flex p-4 bg-yellow-100 dark:bg-amber-800 border-b-2 border-yellow-200 dark:border-amber-900">
+    <div class="text-slate-800 dark:text-slate-100">
+        {{ warning }}
+    </div>
+</div>
+{% endfor %}
+
+<div class="m-4">
+<h1 class="text-4xl mt-4 font-bold">{{ project.name }} - {% translate "Logs" %}</h1>
+
+<div class="flex bg-slate-50 dark:bg-slate-800 border-b-2 mt-4 items-end">
+    <div class="flex flex-wrap">
+        <a href="?{% add_to_qs level='' page=1 %}"><div class="p-4 font-bold hover:bg-slate-200 dark:hover:bg-slate-800 {% if not filters.level %}text-cyan-500 dark:text-cyan-300 border-cyan-500 border-b-4{% else %}text-slate-500 dark:text-slate-300 hover:border-b-4 hover:border-slate-400{% endif %}">{% translate "All" %}</div></a>
+        <a href="?{% add_to_qs level='error' page=1 %}"><div class="p-4 font-bold hover:bg-slate-200 dark:hover:bg-slate-800 {% if filters.level == 'error' %}text-cyan-500 dark:text-cyan-300 border-cyan-500 border-b-4{% else %}text-slate-500 dark:text-slate-300 hover:border-b-4 hover:border-slate-400{% endif %}">{% translate "Error" %}</div></a>
+        <a href="?{% add_to_qs level='warning' page=1 %}"><div class="p-4 font-bold hover:bg-slate-200 dark:hover:bg-slate-800 {% if filters.level == 'warning' %}text-cyan-500 dark:text-cyan-300 border-cyan-500 border-b-4{% else %}text-slate-500 dark:text-slate-300 hover:border-b-4 hover:border-slate-400{% endif %}">{% translate "Warning" %}</div></a>
+        <a href="?{% add_to_qs level='info' page=1 %}"><div class="p-4 font-bold hover:bg-slate-200 dark:hover:bg-slate-800 {% if filters.level == 'info' %}text-cyan-500 dark:text-cyan-300 border-cyan-500 border-b-4{% else %}text-slate-500 dark:text-slate-300 hover:border-b-4 hover:border-slate-400{% endif %}">{% translate "Info" %}</div></a>
+        <a href="?{% add_to_qs level='debug' page=1 %}"><div class="p-4 font-bold hover:bg-slate-200 dark:hover:bg-slate-800 {% if filters.level == 'debug' %}text-cyan-500 dark:text-cyan-300 border-cyan-500 border-b-4{% else %}text-slate-500 dark:text-slate-300 hover:border-b-4 hover:border-slate-400{% endif %}">{% translate "Debug" %}</div></a>
+    </div>
+    <div class="ml-auto p-2">
+        <form action="." method="get">
+            <input type="hidden" name="level" value="{{ filters.level }}">
+            <input type="hidden" name="logger" value="{{ filters.logger }}">
+            <input type="hidden" name="trace" value="{{ filters.trace }}">
+            <input type="hidden" name="span" value="{{ filters.span }}">
+            <input type="hidden" name="template" value="{{ filters.template }}">
+            <input type="hidden" name="origin" value="{{ filters.origin }}">
+            <input type="hidden" name="release" value="{{ filters.release }}">
+            <input type="hidden" name="environment" value="{{ filters.environment }}">
+            <input type="hidden" name="sdk_name" value="{{ filters.sdk_name }}">
+            <input type="hidden" name="sdk_version" value="{{ filters.sdk_version }}">
+            <input type="text" name="text" value="{{ filters.text }}" placeholder="{% translate 'Search logs...' %}" class="bg-slate-50 dark:bg-slate-800 focus:border-cyan-500 dark:focus:border-cyan-400 focus:ring-cyan-200 dark:focus:ring-cyan-700 rounded-md"/>
+        </form>
+    </div>
+</div>
+
+<details class="bg-slate-50 dark:bg-slate-800 border-l-2 border-r-2 border-b-2 border-slate-300 dark:border-slate-600" {% if has_advanced_filters %}open{% endif %}>
+    <summary class="cursor-pointer select-none px-4 py-3 font-bold text-slate-500 dark:text-slate-300">
+        {% translate "More Filters" %}
+    </summary>
+    <form action="." method="get" class="px-4 pb-4">
+        <input type="hidden" name="text" value="{{ filters.text }}">
+        <input type="hidden" name="level" value="{{ filters.level }}">
+        <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <input type="text" name="logger" value="{{ filters.logger }}" placeholder="{% translate 'Logger' %}" class="bg-white dark:bg-slate-900 rounded-md">
+            <input type="text" name="trace" value="{{ filters.trace }}" placeholder="{% translate 'Trace ID' %}" class="bg-white dark:bg-slate-900 rounded-md">
+            <input type="text" name="span" value="{{ filters.span }}" placeholder="{% translate 'Span ID' %}" class="bg-white dark:bg-slate-900 rounded-md">
+            <input type="text" name="template" value="{{ filters.template }}" placeholder="{% translate 'Template' %}" class="bg-white dark:bg-slate-900 rounded-md">
+            <input type="text" name="origin" value="{{ filters.origin }}" placeholder="{% translate 'Origin' %}" class="bg-white dark:bg-slate-900 rounded-md">
+            <input type="text" name="release" value="{{ filters.release }}" placeholder="{% translate 'Release' %}" class="bg-white dark:bg-slate-900 rounded-md">
+            <input type="text" name="environment" value="{{ filters.environment }}" placeholder="{% translate 'Environment' %}" class="bg-white dark:bg-slate-900 rounded-md">
+            <input type="text" name="sdk_name" value="{{ filters.sdk_name }}" placeholder="{% translate 'SDK Name' %}" class="bg-white dark:bg-slate-900 rounded-md">
+            <input type="text" name="sdk_version" value="{{ filters.sdk_version }}" placeholder="{% translate 'SDK Version' %}" class="bg-white dark:bg-slate-900 rounded-md">
+        </div>
+
+        <div class="mt-4 flex items-center">
+            <button class="font-bold text-slate-800 dark:text-slate-100 border-slate-500 dark:border-slate-400 pl-4 pr-4 pb-2 pt-2 border-2 bg-cyan-200 dark:bg-cyan-700 hover:bg-cyan-400 dark:hover:bg-cyan-600 active:ring-3 rounded-md">
+                {% translate "Apply Filters" %}
+            </button>
+            <a href="{% url "log_list" project_pk=project.pk %}" class="text-cyan-500 dark:text-cyan-300 font-bold ml-4">
+                {% translate "Reset" %}
+            </a>
+        </div>
+    </form>
+</details>
+
+    <div>
+        {% for log_entry in page_obj %}
+        <div class="bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-600 border-2">
+            <a href="{% url "log_detail" project_pk=project.pk log_entry_pk=log_entry.pk %}" class="block w-full ml-0 pb-4 pt-4 pr-4 pl-4">
+                <div>
+                    <span class="text-cyan-500 dark:text-cyan-300 font-bold">{{ log_entry.body|truncatechars:180 }}</span>
+                </div>
+                <div class="text-sm text-slate-500 dark:text-slate-300">
+                    <b>{{ log_entry.timestamp|date:"j M G:i T" }}</b>
+                    {% if log_entry.display_level %} | <span class="font-bold uppercase">{{ log_entry.display_level }}</span>{% endif %}
+                    {% if log_entry.display_logger_name %} | {{ log_entry.display_logger_name }}{% endif %}
+                    {% if log_entry.display_origin %} | {{ log_entry.display_origin }}{% endif %}
+                    {% if log_entry.trace_id %} | <span class="font-mono">{{ log_entry.trace_id }}</span>{% endif %}
+                </div>
+            </a>
+        </div>
+        {% empty %}
+        <div class="bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-600 border-2">
+            <div class="p-8 text-center text-xl font-bold text-slate-800 dark:text-slate-100">
+                {% if filters.text %}
+                    {% blocktranslate with text=filters.text %}No logs found for "{{ text }}".{% endblocktranslate %}
+                {% else %}
+                    {% translate "No logs found." %}
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <div class="flex mt-4">
+        <div class="flex ml-2">
+            {% if page_obj.has_previous %}
+            <a href="?{% add_to_qs page=1 %}" class="inline-flex" title="{% translate 'First page' %}">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M3.22 7.595a.75.75 0 0 0 0 1.06l3.25 3.25a.75.75 0 0 0 1.06-1.06l-2.72-2.72 2.72-2.72a.75.75 0 0 0-1.06-1.06l-3.25 3.25Zm8.25-3.25-3.25 3.25a.75.75 0 0 0 0 1.06l3.25 3.25a.75.75 0 1 0 1.06-1.06l-2.72-2.72 2.72-2.72a.75.75 0 0 0-1.06-1.06Z" clip-rule="evenodd" /></svg>
+            </a>
+            <a href="?{% add_to_qs page=page_obj.previous_page_number %}" class="inline-flex" title="{% translate 'Previous page' %}">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M9.78 4.22a.75.75 0 0 1 0 1.06L7.06 8l2.72 2.72a.75.75 0 1 1-1.06 1.06L5.47 8.53a.75.75 0 0 1 0-1.06l3.25-3.25a.75.75 0 0 1 1.06 0Z" clip-rule="evenodd" /></svg>
+            </a>
+            {% else %}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-6 h-6 text-slate-200"><path fill-rule="evenodd" d="M3.22 7.595a.75.75 0 0 0 0 1.06l3.25 3.25a.75.75 0 0 0 1.06-1.06l-2.72-2.72 2.72-2.72a.75.75 0 0 0-1.06-1.06l-3.25 3.25Zm8.25-3.25-3.25 3.25a.75.75 0 0 0 0 1.06l3.25 3.25a.75.75 0 1 0 1.06-1.06l-2.72-2.72 2.72-2.72a.75.75 0 0 0-1.06-1.06Z" clip-rule="evenodd" /></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-6 h-6 text-slate-200"><path fill-rule="evenodd" d="M9.78 4.22a.75.75 0 0 1 0 1.06L7.06 8l2.72 2.72a.75.75 0 1 1-1.06 1.06L5.47 8.53a.75.75 0 0 1 0-1.06l3.25-3.25a.75.75 0 0 1 1.06 0Z" clip-rule="evenodd" /></svg>
+            {% endif %}
+
+            {% if page_obj.object_list|length > 0 %}
+                {% translate "Logs" %} {{ page_obj.start_index|intcomma }} – {{ page_obj.end_index|intcomma }}
+            {% else %}
+                {% if page_obj.number > 1 %}
+                    {% blocktranslate with start_index=page_obj.start_index %}Less than {{ start_index }} Logs{% endblocktranslate %}
+                {% else %}
+                    0 {% translate "Logs" %}
+                {% endif %}
+            {% endif %}
+
+            {% if page_obj.has_next %}
+            <a href="?{% add_to_qs page=page_obj.next_page_number %}" class="inline-flex" title="{% translate 'Next page' %}">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-6 h-6"><path fill-rule="evenodd" d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" /></svg>
+            </a>
+            {% else %}
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" class="w-6 h-6 text-slate-200"><path fill-rule="evenodd" d="M6.22 4.22a.75.75 0 0 1 1.06 0l3.25 3.25a.75.75 0 0 1 0 1.06l-3.25 3.25a.75.75 0 0 1-1.06-1.06L8.94 8 6.22 5.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" /></svg>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block title %}{{ log_entry.body|truncatechars:60 }} · {{ project.name }} · {{ site_title }}{% endblock %}
+
+{% block content %}
+
+{% for warning in project.get_warnings %}
+<div class="flex p-4 bg-yellow-100 dark:bg-amber-800 border-b-2 border-yellow-200 dark:border-amber-900">
+    <div class="text-slate-800 dark:text-slate-100">
+        {{ warning }}
+    </div>
+</div>
+{% endfor %}
+
+<div class="m-4">
+    <div class="text-sm">
+        <a href="{% url "log_list" project_pk=project.pk %}" class="text-cyan-500 dark:text-cyan-300 font-bold">{% translate "Back to Logs" %}</a>
+    </div>
+
+    <h1 class="text-3xl mt-4 font-bold font-mono break-words">{{ log_entry.body }}</h1>
+
+    <div class="mt-6">
+        <h2 class="text-2xl font-bold">{% translate "Key Info" %}</h2>
+        <div class="mt-4">
+            <div class="flex border-t-2 border-slate-300 dark:border-slate-600">
+                <div class="w-1/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600">{% translate "Timestamp" %}</div>
+                <div class="w-3/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600 font-mono">{{ log_entry.timestamp|date:"j M G:i:s T" }}</div>
+            </div>
+            <div class="flex">
+                <div class="w-1/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600">{% translate "Level" %}</div>
+                <div class="w-3/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600 font-mono">{{ log_entry.display_level|default:"-" }}</div>
+            </div>
+            <div class="flex">
+                <div class="w-1/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600">{% translate "Logger" %}</div>
+                <div class="w-3/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600 font-mono">{{ log_entry.display_logger_name|default:"-" }}</div>
+            </div>
+            <div class="flex">
+                <div class="w-1/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600">{% translate "Template" %}</div>
+                <div class="w-3/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600 font-mono">{{ log_entry.display_message_template|default:"-" }}</div>
+            </div>
+            <div class="flex">
+                <div class="w-1/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600">{% translate "Trace ID" %}</div>
+                <div class="w-3/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600 font-mono">{{ log_entry.trace_id|default:"-" }}</div>
+            </div>
+            <div class="flex">
+                <div class="w-1/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600">{% translate "Span ID" %}</div>
+                <div class="w-3/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600 font-mono">{{ log_entry.span_id|default:"-" }}</div>
+            </div>
+            <div class="flex">
+                <div class="w-1/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600">{% translate "Origin" %}</div>
+                <div class="w-3/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600 font-mono">{{ log_entry.display_origin|default:"-" }}</div>
+            </div>
+            <div class="flex">
+                <div class="w-1/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600">{% translate "Release" %}</div>
+                <div class="w-3/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600 font-mono">{{ log_entry.display_release|default:"-" }}</div>
+            </div>
+            <div class="flex">
+                <div class="w-1/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600">{% translate "Environment" %}</div>
+                <div class="w-3/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600 font-mono">{{ log_entry.display_environment|default:"-" }}</div>
+            </div>
+            <div class="flex">
+                <div class="w-1/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600">{% translate "SDK" %}</div>
+                <div class="w-3/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600 font-mono">{{ log_entry.display_sdk_name|default:"-" }} {{ log_entry.display_sdk_version|default:"" }}</div>
+            </div>
+            <div class="flex">
+                <div class="w-1/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600">{% translate "Sequence" %}</div>
+                <div class="w-3/4 border-b-2 border-dotted border-slate-300 dark:border-slate-600 font-mono">{{ log_entry.sequence_display|default:"-" }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-8">
+        <h2 class="text-2xl font-bold">{% translate "Raw Attributes" %}</h2>
+        <div class="mt-4">
+            {% for key, value in log_entry.display_raw_attributes.items %}
+            <div class="flex {% if forloop.first %}border-t-2 border-slate-300 dark:border-slate-600{% endif %}">
+                <div class="w-1/4 {% if not forloop.last %}border-b-2 border-dotted border-slate-300 dark:border-slate-600{% endif %}">{{ key }}</div>
+                <div class="w-3/4 font-mono break-words {% if not forloop.last %}border-b-2 border-dotted border-slate-300 dark:border-slate-600{% endif %}">{{ value }}</div>
+            </div>
+            {% empty %}
+            <div class="italic text-slate-500 dark:text-slate-300">{% translate "No attributes available." %}</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}
