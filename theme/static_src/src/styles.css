@@ -1,6 +1,52 @@
 @config "../tailwind.config.js";
 @import "tailwindcss";
 
+@theme {
+  --color-slate-50: #faf4ed;
+  --color-slate-100: #fffaf3;
+  --color-slate-200: #f2e9e1;
+  --color-slate-300: #dfdad9;
+  --color-slate-400: #9893a5;
+  --color-slate-500: #797593;
+  --color-slate-600: #6e6a86;
+  --color-slate-700: #232136;
+  --color-slate-800: #1f1d2e;
+  --color-slate-900: #191724;
+  --color-slate-950: #16141f;
+
+  --color-gray-200: #dfdad9;
+  --color-gray-400: #9893a5;
+  --color-gray-500: #797593;
+
+  --color-cyan-50: #f9eceb;
+  --color-cyan-100: #f4ddda;
+  --color-cyan-200: #ebbcba;
+  --color-cyan-300: #d7827e;
+  --color-cyan-400: #c96f78;
+  --color-cyan-500: #b4637a;
+  --color-cyan-600: #9d4b66;
+  --color-cyan-700: #7f3b52;
+  --color-cyan-800: #643042;
+  --color-cyan-900: #4c2432;
+
+  --color-red-50: #fdebf0;
+  --color-red-100: #f9d6df;
+  --color-red-200: #f4b4c6;
+  --color-red-300: #ee8bab;
+  --color-red-400: #eb6f92;
+  --color-red-500: #d94f77;
+  --color-red-600: #b93e65;
+  --color-red-700: #96324f;
+  --color-red-800: #74253e;
+  --color-red-900: #52192d;
+
+  --color-amber-800: #c18d39;
+  --color-amber-900: #9b6b1b;
+  --color-yellow-100: #fdf1d4;
+  --color-yellow-200: #f6c177;
+  --color-yellow-700: #b78a32;
+}
+
 /* Preserve Tailwind 3 behavior: default border color was gray.200
 the dark-mode stuff is actually an improvement over our previous design @tailwind 3 that we simply added
 because we were in the process of fixing borders globally anyway */
