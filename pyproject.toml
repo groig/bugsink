@@ -52,6 +52,7 @@ include = [
     "ee*",
     "ingest*",
     "issues*",
+    "logs*",
     "files*",
     "performance*",
     "phonehome*",

@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 
 from bugsink.api_serializers import UTCModelSerializer
 
@@ -30,6 +31,7 @@ class LogEntryListSerializer(UTCModelSerializer):
             "sequence",
         ]
 
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_sequence(self, obj):
         return obj.sequence_display
 
