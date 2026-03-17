@@ -8,13 +8,14 @@ from django.contrib.auth import get_user_model
 from django.template.loader import get_template
 from django.utils import timezone
 
+from bugsink.app_settings import get_settings
 from issues.factories import get_or_create_issue
 from projects.models import Project, ProjectMembership
-from events.factories import create_event
+from events.factories import create_event, create_event_data
 from teams.models import Team, TeamMembership
 
 from .models import MessagingServiceConfig
-from .service_backends.slack import slack_backend_send_test_message, slack_backend_send_alert
+from .service_backends.slack import SlackConfigForm, slack_backend_send_test_message, slack_backend_send_alert
 from .service_backends.discord import discord_backend_send_test_message, discord_backend_send_alert
 from .tasks import send_new_issue_alert, send_regression_alert, send_unmute_alert, _get_users_for_email_alert
 from .views import DEBUG_CONTEXTS
@@ -303,6 +304,81 @@ class TestSlackBackendErrorHandling(DjangoTestCase):
         self.config.clear_failure_status()
         self.config.save()
         self.assertFalse(self.config.has_recent_failure())
+
+    @patch('alerts.service_backends.slack.requests.post')
+    def test_slack_alert_message_uses_baked_in_layout(self, mock_post):
+        issue, _ = get_or_create_issue(project=self.project)
+        issue.calculated_type = "ValueError"
+        issue.calculated_value = "Bad input"
+        issue.transaction = "task_sync_zoho_deal"
+        issue.save(update_fields=["calculated_type", "calculated_value", "transaction"])
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        slack_backend_send_alert(
+            "https://hooks.slack.com/test",
+            issue.id,
+            "New issue",
+            "a",
+            "NEW",
+            self.config.id,
+        )
+
+        data = json.loads(mock_post.call_args.kwargs["data"])
+
+        self.assertEqual(data["text"], "ValueError: Bad input")
+        self.assertEqual(len(data["blocks"]), 4)
+        self.assertEqual(data["blocks"][0]["text"]["type"], "mrkdwn")
+        self.assertEqual(
+            data["blocks"][0]["text"]["text"],
+            f":red_circle: *<{get_settings().BASE_URL + issue.get_absolute_url()}|ValueError>*",
+        )
+        self.assertEqual(data["blocks"][1]["type"], "context")
+        self.assertEqual(data["blocks"][1]["elements"][0]["text"], "task\\_sync\\_zoho\\_deal")
+        self.assertEqual(data["blocks"][2]["text"]["text"], "```Bad input```")
+        self.assertEqual(data["blocks"][3]["type"], "context")
+        self.assertEqual(data["blocks"][3]["elements"][0]["text"], "*State:* New issue")
+
+    @patch('alerts.service_backends.slack.requests.post')
+    def test_slack_alert_message_prefers_request_path_over_code_location(self, mock_post):
+        issue, _ = get_or_create_issue(project=self.project)
+        issue.transaction = "task_sync_zoho_deal"
+        issue.save(update_fields=["transaction"])
+
+        event_data = create_event_data(exception_type="ValueError")
+        event_data["request"] = {"url": "https://example.com/erp/accounting/search/inventory-sellers/?page=2"}
+        event_data["transaction"] = "task_sync_zoho_deal"
+        create_event(project=self.project, issue=issue, event_data=event_data)
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        slack_backend_send_alert(
+            "https://hooks.slack.com/test",
+            issue.id,
+            "New issue",
+            "a",
+            "NEW",
+            self.config.id,
+        )
+
+        data = json.loads(mock_post.call_args.kwargs["data"])
+        self.assertEqual(data["blocks"][1]["elements"][0]["text"], "/erp/accounting/search/inventory-sellers/?page=2")
+
+
+class TestSlackConfigForm(DjangoTestCase):
+    def test_slack_config_form_only_stores_webhook_url(self):
+        form = SlackConfigForm(data={
+            "webhook_url": "https://hooks.slack.com/test",
+        })
+
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.get_config(), {"webhook_url": "https://hooks.slack.com/test"})
 
 
 class TestDiscordBackendErrorHandling(DjangoTestCase):
