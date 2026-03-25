@@ -16,6 +16,9 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')  # Note: slightly 
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 USE_X_REAL_IP = True
+# If your reverse proxy must overwrite the Host header when talking to Bugsink, you can pass the original host
+# through X-Forwarded-Host and uncomment the setting below.
+# USE_X_FORWARDED_HOST = True
 # Alternatively, you can use X-Forwarded-For. (Set the number of proxies in the settings below.)
 # USE_X_FORWARDED_FOR = True
 # X_FORWARDED_FOR_PROXY_COUNT = 1
@@ -112,6 +115,12 @@ BUGSINK = {
     # Optionally, you can set the following to True to further minimize information exposure in the UI. (The default is
     # False, which we've judged to still not expose too much in most cases, but you might have different requirements.)
     "MINIMIZE_INFORMATION_EXPOSURE": False,
+
+    # Webhook outbound security:
+    # "ALERTS_WEBHOOK_OUTBOUND_MODE": "open",  # or "allowlist_only"
+    # "ALERTS_WEBHOOK_ALLOW_LIST": ["hooks.example.com", "203.0.113.0/24"],
+    # "ALERTS_WEBHOOK_DENY_LIST": ["bad.example.com", "198.51.100.0/24"],
+    # "ALERTS_WEBHOOK_DENY_NON_GLOBAL": True,
 
     # "EVENT_STORAGES": {
     #     "local_flat_files": {  # a meaningful name of your choosing
